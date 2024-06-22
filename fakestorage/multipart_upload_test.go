@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/jonmseaman/gcs-xml-multipart-client/multipartclient"
+	"jonmseaman/gcs-xml-multipart-client/multipartclient"
 )
 
 func TestUnimplementedHandlers(t *testing.T) {
