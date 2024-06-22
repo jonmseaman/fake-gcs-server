@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"jonmseaman/gcs-xml-multipart-client/multipartclient"
+	"github.com/jonmseaman/gcs-xml-multipart-client/multipartclient"
 )
 
 func TestUnimplementedHandlers(t *testing.T) {
@@ -20,6 +20,11 @@ func TestUnimplementedHandlers(t *testing.T) {
 		method string
 		url    string
 	}{
+		{
+			name:   "Upload object parts",
+			method: "PUT",
+			url:    "/obj.txt?partNumber=1&uploadId=my-upload-id",
+		},
 		{
 			name:   "Complete Multipart Upload",
 			method: "POST",
