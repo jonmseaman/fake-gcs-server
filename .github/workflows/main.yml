@@ -28,9 +28,9 @@ jobs:
     name: cross-compilation (GOOS=${{ matrix.goos }}, GOARCH=${{ matrix.goarch }})
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.0.2
+      - uses: actions/setup-go@v5.1.0
         with:
           go-version: "1.x"
 
@@ -53,9 +53,9 @@ jobs:
     name: tests (${{ matrix.os }}/go-${{ matrix.go_version }}
     runs-on: ${{ matrix.os }}-latest
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.0.2
+      - uses: actions/setup-go@v5.1.0
         id: go
         with:
           go-version: ${{ matrix.go_version }}
@@ -67,17 +67,17 @@ jobs:
     name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
-      - uses: golangci/golangci-lint-action@v6.1.0
+      - uses: golangci/golangci-lint-action@v6.1.1
 
   staticcheck:
     name: staticcheck
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.0.2
+      - uses: actions/setup-go@v5.1.0
         id: go
         with:
           go-version: "1.23"
@@ -92,7 +92,7 @@ jobs:
 
       - name: staticcheck cache
         id: staticcheck-cache
-        uses: actions/cache@v4.0.2
+        uses: actions/cache@v4.1.2
         with:
           path: ~/.cache/staticcheck
           key: "${{ steps.get-staticcheck-version.outputs.version }}"
@@ -105,9 +105,9 @@ jobs:
     name: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.0.2
+      - uses: actions/setup-go@v5.1.0
         id: go
         with:
           go-version: "1.23"
@@ -124,7 +124,7 @@ jobs:
           args: -c "./fake-gcs-server -h"
 
       - name: upload binary
-        uses: actions/upload-artifact@v4.4.0
+        uses: actions/upload-artifact@v4.4.3
         with:
           name: fake-gcs-server
           path: ./fake-gcs-server
@@ -175,7 +175,7 @@ jobs:
       - lint
       - staticcheck
     steps:
-      - uses: actions/checkout@v4.1.7
+      - uses: actions/checkout@v4.2.2
 
       - name: download binary
         uses: actions/download-artifact@v4.1.8
