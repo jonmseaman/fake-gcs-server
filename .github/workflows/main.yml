@@ -14,12 +14,13 @@ jobs:
     strategy:
       matrix:
         go_version:
-          - "1.22"
           - "1.23"
+          - "1.24"
         goos:
           - darwin
           - freebsd
           - linux
+          - openbsd
           - windows
         goarch:
           - amd64
@@ -30,7 +31,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.1.0
+      - uses: actions/setup-go@v5.3.0
         with:
           go-version: "1.x"
 
@@ -43,19 +44,19 @@ jobs:
     strategy:
       matrix:
         go_version:
-          - "1.22"
           - "1.23"
+          - "1.24"
         os:
           - macos
           - ubuntu
           - windows
 
-    name: tests (${{ matrix.os }}/go-${{ matrix.go_version }}
+    name: tests (${{ matrix.os }}/go-${{ matrix.go_version }})
     runs-on: ${{ matrix.os }}-latest
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.1.0
+      - uses: actions/setup-go@v5.3.0
         id: go
         with:
           go-version: ${{ matrix.go_version }}
@@ -69,7 +70,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - uses: golangci/golangci-lint-action@v6.1.1
+      - uses: golangci/golangci-lint-action@v6.5.1
 
   staticcheck:
     name: staticcheck
@@ -77,10 +78,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.1.0
+      - uses: actions/setup-go@v5.3.0
         id: go
         with:
-          go-version: "1.23"
+          go-version: "1.24"
 
       - run: |
           go install honnef.co/go/tools/cmd/staticcheck@master
@@ -92,7 +93,7 @@ jobs:
 
       - name: staticcheck cache
         id: staticcheck-cache
-        uses: actions/cache@v4.1.2
+        uses: actions/cache@v4.2.2
         with:
           path: ~/.cache/staticcheck
           key: "${{ steps.get-staticcheck-version.outputs.version }}"
@@ -107,10 +108,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4.2.2
 
-      - uses: actions/setup-go@v5.1.0
+      - uses: actions/setup-go@v5.3.0
         id: go
         with:
-          go-version: "1.23"
+          go-version: "1.24"
 
       - name: go-build
         run: go build -o fake-gcs-server
@@ -124,7 +125,7 @@ jobs:
           args: -c "./fake-gcs-server -h"
 
       - name: upload binary
-        uses: actions/upload-artifact@v4.4.3
+        uses: actions/upload-artifact@v4.6.1
         with:
           name: fake-gcs-server
           path: ./fake-gcs-server
@@ -144,7 +145,7 @@ jobs:
             docker-image: node:20-alpine
             entrypoint: /bin/sh
           - lang: go
-            docker-image: golang:1.23-alpine
+            docker-image: golang:1.24-alpine
             entrypoint: /bin/sh
           - lang: dotnet
             docker-image: mcr.microsoft.com/dotnet/sdk:5.0-alpine
@@ -178,7 +179,7 @@ jobs:
       - uses: actions/checkout@v4.2.2
 
       - name: download binary
-        uses: actions/download-artifact@v4.1.8
+        uses: actions/download-artifact@v4.1.9
         with:
           name: fake-gcs-server
 

@@ -110,10 +110,12 @@ func (g *Server) GetObject(ctx context.Context, req *pb.GetObjectRequest) (*pb.O
 	return &pb.Object{
 		Name:               obj.ObjectAttrs.Name,
 		Bucket:             obj.ObjectAttrs.BucketName,
+		StorageClass:       obj.ObjectAttrs.StorageClass,
 		Md5Hash:            obj.ObjectAttrs.Md5Hash,
 		Generation:         obj.ObjectAttrs.Generation,
 		ContentType:        obj.ObjectAttrs.ContentType,
 		ContentDisposition: obj.ObjectAttrs.ContentDisposition,
+		ContentLanguage:    obj.ObjectAttrs.ContentLanguage,
 	}, nil
 }
 
@@ -136,18 +138,19 @@ func (g *Server) PatchObject(ctx context.Context, req *pb.PatchObjectRequest) (*
 		ContentType:        req.Metadata.ContentType,
 		ContentEncoding:    req.Metadata.ContentEncoding,
 		ContentDisposition: req.Metadata.ContentDisposition,
+		ContentLanguage:    req.Metadata.ContentLanguage,
 	}
 	obj, err := g.backend.PatchObject(req.Bucket, req.Object, attrs)
 	return makeObject(obj), err
 }
 
-// ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string)
+// ComposeObject(bucketName string, objectNames []string, destinationName string, metadata map[string]string, contentType string, contentDisposition string, contentLanguage string)
 func (g *Server) ComposeObject(ctx context.Context, req *pb.ComposeObjectRequest) (*pb.Object, error) {
 	sourceObjNames := make([]string, 2)
 	for i := 0; i < len(req.SourceObjects); i++ {
 		sourceObjNames[i] = req.SourceObjects[i].Name
 	}
-	obj, err := g.backend.ComposeObject(req.DestinationBucket, sourceObjNames, req.DestinationObject, map[string]string{}, "")
+	obj, err := g.backend.ComposeObject(req.DestinationBucket, sourceObjNames, req.DestinationObject, map[string]string{}, "", "", "")
 	return makeObject(obj), err
 }
 

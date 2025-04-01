@@ -51,6 +51,7 @@ func getObjectTestCases() objectTestCases {
 		contentType        = "text/plain; charset=utf-8"
 		contentEncoding    = "gzip"
 		contentDisposition = "attachment; filename=\"replaced.txt\""
+		contentLanguage    = "fr"
 		metaValue          = "MetaValue"
 	)
 	testInitExecTime := time.Now().Truncate(time.Microsecond)
@@ -113,9 +114,11 @@ func getObjectTestCases() objectTestCases {
 					ContentType:        contentType,
 					ContentEncoding:    contentEncoding,
 					ContentDisposition: contentDisposition,
+					ContentLanguage:    contentLanguage,
 					Crc32c:             checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
 					Md5Hash:            checksum.EncodedHash(hash),
 					Metadata:           map[string]string{"MetaHeader": metaValue},
+					StorageClass:       "COLDLINE",
 				},
 			},
 		},
@@ -126,6 +129,17 @@ func getObjectTestCases() objectTestCases {
 					BucketName:  bucketName,
 					Name:        "video/hi-res/best_video_1080p.mp4",
 					ContentType: "text/html; charset=utf-8",
+				},
+			},
+		},
+		{
+			"object with no contents neither dates",
+			Object{
+				ObjectAttrs: ObjectAttrs{
+					BucketName:   bucketName,
+					Name:         "video/hi-res/best_video_1080p.mp4",
+					ContentType:  "text/html; charset=utf-8",
+					StorageClass: "COLDLINE",
 				},
 			},
 		},
@@ -147,6 +161,9 @@ func checkObjectAttrs(testObj Object, attrs *storage.ObjectAttrs, t *testing.T) 
 	}
 	if attrs.Name != testObj.Name {
 		t.Errorf("wrong object name\nwant %q\ngot  %q", testObj.Name, attrs.Name)
+	}
+	if testObj.StorageClass != "" && attrs.StorageClass != testObj.StorageClass {
+		t.Errorf("wrong object storage class\nwant %q\ngot  %q", testObj.StorageClass, attrs.StorageClass)
 	}
 	if !(testObj.Created.IsZero()) && !testObj.Created.Equal(attrs.Created) {
 		t.Errorf("wrong created date\nwant %v\ngot   %v\nname %v", testObj.Created, attrs.Created, attrs.Name)
@@ -174,6 +191,16 @@ func checkObjectAttrs(testObj Object, attrs *storage.ObjectAttrs, t *testing.T) 
 	}
 	if attrs.ContentDisposition != testObj.ContentDisposition {
 		t.Errorf("wrong content disposition\nwant %q\ngot  %q", testObj.ContentDisposition, attrs.ContentDisposition)
+	}
+	if attrs.ContentLanguage != testObj.ContentLanguage {
+		t.Errorf("wrong content language\nwant %q\ngot  %q", testObj.ContentLanguage, attrs.ContentLanguage)
+	}
+	expectedStorageClass := testObj.StorageClass
+	if expectedStorageClass == "" {
+		expectedStorageClass = "STANDARD"
+	}
+	if attrs.StorageClass != expectedStorageClass {
+		t.Errorf("wrong storage class\nwant %q\ngot  %q", expectedStorageClass, attrs.StorageClass)
 	}
 	if testObj.Content != nil && attrs.Size != int64(len(testObj.Content)) {
 		t.Errorf("wrong size returned\nwant %d\ngot  %d", len(testObj.Content), attrs.Size)
@@ -387,7 +414,7 @@ func TestServerClientObjectTranscoding(t *testing.T) {
 	const (
 		bucketName      = "some-bucket"
 		objectName      = "items/data.txt"
-		content         = "some nice content, which will be gziped"
+		content         = "some nice content, which will be gzipped"
 		contentType     = "text/plain; charset=utf-8"
 		contentEncoding = "gzip"
 	)
@@ -444,7 +471,7 @@ func TestServerClientObjectSkipTranscoding(t *testing.T) {
 	const (
 		bucketName      = "some-bucket"
 		objectName      = "items/data.txt"
-		content         = "some nice content, which will be gziped"
+		content         = "some nice content, which will be gzipped"
 		contentType     = "text/plain; charset=utf-8"
 		contentEncoding = "gzip"
 	)
@@ -606,6 +633,34 @@ func TestServerClientObjectRangeReader(t *testing.T) {
 					t.Errorf("wrong content type\nwant %q\ngot  %q", contentType, ct)
 				}
 			})
+		}
+	})
+}
+
+func TestServerClientObjectRangeReaderInvalid(t *testing.T) {
+	const (
+		bucketName  = "some-bucket"
+		objectName  = "items/data.txt"
+		content     = "some really nice but long content stored in my object"
+		contentType = "text/plain; charset=iso-8859"
+	)
+	objs := []Object{
+		{
+			ObjectAttrs: ObjectAttrs{
+				BucketName:  bucketName,
+				Name:        objectName,
+				ContentType: contentType,
+			},
+			Content: []byte(content),
+		},
+	}
+
+	runServersTest(t, runServersOptions{objs: objs}, func(t *testing.T, server *Server) {
+		client := server.Client()
+		objHandle := client.Bucket(bucketName).Object(objectName)
+		_, err := objHandle.NewRangeReader(context.TODO(), 500, 10)
+		if err == nil {
+			t.Fatal("unexpected <nil> error")
 		}
 	})
 }
@@ -1676,6 +1731,23 @@ func TestServerClientObjectSetAclPrivate(t *testing.T) {
 				t.Fatal("acl role not set to RoleReader")
 				return
 			}
+
+			err = objHandle.ACL().Delete(ctx, storage.AllAuthenticatedUsers)
+			if err != nil {
+				t.Fatalf("unexpected error while deleting acl %+v", err)
+				return
+			}
+
+			rules, err = objHandle.ACL().List(ctx)
+			if err != nil {
+				t.Fatalf("unexpected error while getting acl %+v", err)
+				return
+			}
+
+			if len(rules) != 0 {
+				t.Fatalf("acl has unexpected rules: %+v", rules)
+				return
+			}
 		})
 	})
 }
@@ -2058,56 +2130,67 @@ func TestParseRangeRequest(t *testing.T) {
 
 func TestServiceClientComposeObject(t *testing.T) {
 	const (
-		source1Content = "some content"
-		source2Content = "other content"
-		source3Content = "third test"
-		contentType    = "text/plain; charset=utf-8"
+		source1Content     = "some content"
+		source2Content     = "other content"
+		source3Content     = "third test"
+		contentDisposition = "attachment; filename=\"replaced.txt\""
+		contentLanguage    = "fr"
+		contentType        = "text/plain; charset=utf-8"
 	)
 	u32Checksum := uint32Checksum([]byte(source1Content))
 	hash := checksum.MD5Hash([]byte(source1Content))
+	then := time.Now().Add(time.Duration(-1) * time.Minute)
 
 	objs := []Object{
 		{
 			ObjectAttrs: ObjectAttrs{
-				BucketName:  "first-bucket",
-				Name:        "files/source1.txt",
-				ContentType: contentType,
-				Crc32c:      checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
-				Md5Hash:     checksum.EncodedHash(hash),
-				Metadata:    map[string]string{"foo": "bar"},
+				BucketName:         "first-bucket",
+				Name:               "files/source1.txt",
+				ContentDisposition: contentDisposition,
+				ContentLanguage:    contentLanguage,
+				ContentType:        contentType,
+				Crc32c:             checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
+				Md5Hash:            checksum.EncodedHash(hash),
+				Metadata:           map[string]string{"foo": "bar"},
 			},
 			Content: []byte(source1Content),
 		},
 		{
 			ObjectAttrs: ObjectAttrs{
-				BucketName:  "first-bucket",
-				Name:        "files/source2.txt",
-				ContentType: contentType,
-				Crc32c:      checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
-				Md5Hash:     checksum.EncodedHash(hash),
-				Metadata:    map[string]string{"foo": "bar"},
+				BucketName:         "first-bucket",
+				Name:               "files/source2.txt",
+				ContentDisposition: contentDisposition,
+				ContentLanguage:    contentLanguage,
+				ContentType:        contentType,
+				Crc32c:             checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
+				Md5Hash:            checksum.EncodedHash(hash),
+				Metadata:           map[string]string{"foo": "bar"},
 			},
 			Content: []byte(source2Content),
 		},
 		{
 			ObjectAttrs: ObjectAttrs{
-				BucketName:  "first-bucket",
-				Name:        "files/source3.txt",
-				ContentType: contentType,
-				Crc32c:      checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
-				Md5Hash:     checksum.EncodedHash(hash),
-				Metadata:    map[string]string{"foo": "bar"},
+				BucketName:         "first-bucket",
+				Name:               "files/source3.txt",
+				ContentDisposition: contentDisposition,
+				ContentLanguage:    contentLanguage,
+				ContentType:        contentType,
+				Crc32c:             checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
+				Md5Hash:            checksum.EncodedHash(hash),
+				Metadata:           map[string]string{"foo": "bar"},
 			},
 			Content: []byte(source3Content),
 		},
 		{
 			ObjectAttrs: ObjectAttrs{
-				BucketName:  "first-bucket",
-				Name:        "files/destination.txt",
-				ContentType: contentType,
-				Crc32c:      checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
-				Md5Hash:     checksum.EncodedHash(hash),
-				Metadata:    map[string]string{"foo": "bar"},
+				BucketName:         "first-bucket",
+				Name:               "files/destination.txt",
+				ContentDisposition: contentDisposition,
+				ContentLanguage:    contentLanguage,
+				ContentType:        contentType,
+				Crc32c:             checksum.EncodedChecksum(uint32ToBytes(u32Checksum)),
+				Md5Hash:            checksum.EncodedHash(hash),
+				Metadata:           map[string]string{"foo": "bar"},
 			},
 			Content: []byte("test"),
 		},
@@ -2170,6 +2253,8 @@ func TestServiceClientComposeObject(t *testing.T) {
 				dstObject := client.Bucket(test.bucketName).Object(test.destObjectName)
 				composer := dstObject.ComposerFrom(sourceObjects...)
 
+				composer.ContentDisposition = contentDisposition
+				composer.ContentLanguage = contentLanguage
 				composer.ContentType = contentType
 				composer.Metadata = map[string]string{"baz": "qux"}
 				attrs, err := composer.Run(context.TODO())
@@ -2195,8 +2280,20 @@ func TestServiceClientComposeObject(t *testing.T) {
 				if attrs.CRC32C != expectedChecksum {
 					t.Errorf("wrong checksum in compose object attrs\nwant %d\ngot  %d", u32Checksum, attrs.CRC32C)
 				}
+				if attrs.ContentDisposition != contentDisposition {
+					t.Errorf("wrong content disposition\nwant %q\ngot  %q", contentDisposition, attrs.ContentDisposition)
+				}
+				if attrs.ContentLanguage != contentLanguage {
+					t.Errorf("wrong content language\nwant %q\ngot  %q", contentLanguage, attrs.ContentLanguage)
+				}
 				if attrs.ContentType != contentType {
 					t.Errorf("wrong content type\nwant %q\ngot  %q", contentType, attrs.ContentType)
+				}
+				if then.After(attrs.Created) {
+					t.Errorf("wrong created time\nwant > %v\ngot:   %v", then, attrs.Created)
+				}
+				if then.After(attrs.Updated) {
+					t.Errorf("wrong updated time\nwant > %v\ngot:   %v", then, attrs.Updated)
 				}
 				if !bytes.Equal(attrs.MD5, expectedHash) {
 					t.Errorf("wrong hash returned\nwant %d\ngot   %d", hash, attrs.MD5)
@@ -2213,6 +2310,12 @@ func TestServiceClientComposeObject(t *testing.T) {
 				}
 				if expect := checksum.EncodedHash(expectedHash); expect != obj.Md5Hash {
 					t.Errorf("wrong hash on object\nwant %s\ngot  %s", expect, obj.Md5Hash)
+				}
+				if obj.ContentDisposition != contentDisposition {
+					t.Errorf("wrong content disposition\nwant %q\ngot  %q", contentDisposition, obj.ContentDisposition)
+				}
+				if obj.ContentLanguage != contentLanguage {
+					t.Errorf("wrong content language\nwant %q\ngot  %q", contentLanguage, obj.ContentLanguage)
 				}
 				if obj.ContentType != contentType {
 					t.Errorf("wrong content type\nwant %q\ngot  %q", contentType, obj.ContentType)
